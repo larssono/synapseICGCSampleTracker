@@ -68,3 +68,9 @@ synapseICGCMonitor SUBCOMMMAND -h
 gets help on a specific subcommand.
 
 
+##Extracting status using the Query engine
+Most of the functionality described above uses queries (with additional handling of collisions and prioritization of files."  This means it is possible to track the status using the Synapse query services. For example to find all bam files currently awaiting to be handled you can from the command line:
+```
+synapse query "select name, id, accession_identifier from file where parentId=='syn2364746' and status=='unassigned'"
+```
+additional filtering can be done on columns such as fileSize, donor_identifier, fileMd5 etc.
