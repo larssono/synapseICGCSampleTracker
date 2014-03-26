@@ -57,8 +57,8 @@ feed = gd_client.GetWorksheetsFeed(spreadsheet_id)
 worksheet_id = feed.entry[0].id.text.rsplit('/',1)[1]
 
 rows = gd_client.GetListFeed(spreadsheet_id, worksheet_id).entry
-for i, row in enumerate(rows[3000:]):
-    print i+3000, row.custom['projectcode'].text, '%s_%s' %(row.custom['accessionidentifier'].text, row.custom['sampleidentifier'].text)
+for i, row in enumerate(rows[]):
+    print i+1, row.custom['projectcode'].text, '%s_%s' %(row.custom['accessionidentifier'].text, row.custom['sampleidentifier'].text)
     if 'TCGA' in row.custom['study'].text:
         path = '%s%s' %(BASE_URL, row.custom['accessionidentifier'].text)
         location='CGHub'
