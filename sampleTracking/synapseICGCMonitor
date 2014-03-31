@@ -4,6 +4,7 @@ Tracker for ICGC realignment of TCGA data
 """
 import argparse
 import os
+import subprocess
 import sys
 import synapseclient
 import json
@@ -14,16 +15,34 @@ TRACKER_ID='syn2364746'#'syn2381825' #
 SPLIT_TRACKER_ID = 'syn2381914'
 
 
-def getBamForSplit(args, syn):
-    """Returns highest priority unassigned BAM files and changes status to splitting.
+state_path = {
+    'unassigned' : 'downloading',
+    'downloading' : 'downloaded',
+    'downloaded' : 'aligning',
+    'aligning' : 'aligned',
+    'aligned' : 'uploading',
+    'uploading' : 'uploaded'
+}
+
+def getBamForWork(args, syn):
+    """Returns highest priority unassigned BAM files and changes status to downloading.
 
     Queries the list of remaining unassigned samples orderd by
     fileSize and tries to change status of to splitting of largest.  If successfull it returns the highest 
     """
     ids = getOrderedListOfUnassigned(syn)
+    if args.smallest:
+        ids.reverse()
     sys.stderr.write('%i Unprocessed TCGA Samples\n' %len(ids))
     i = 0 
+    j = 0
+    if args.out is None:
+        out = sys.stdout
+    else:
+        out = open(args.out, "w")
     while True:
+        if j >= args.count:
+            return
         if i==len(ids):
             sys.stderr.write('No more samples available\n')
             return 
@@ -32,13 +51,14 @@ def getBamForSplit(args, syn):
             i+=1 
             continue
         ent.assignee = args.assignee
-        ent.status = 'splitting'
+        ent.status = 'downloading'
         try:
             syn.store(ent)
-            print ent.accession_identifier[0]
-            break
+            out.write("%s\n" % ent.accession_identifier[0])
+            j+=1
         except SynapseHTTPError:
             i+=1
+    out.close()
     
 
 def getOrderedListOfUnassigned(syn):
@@ -68,20 +88,36 @@ def getOrderedListOfUnassigned(syn):
     ids = [ids[i] for i in idx[::-1]]
     return ids
     
-def addSplitBamFiles(args, syn):
-    """Adds file entities for each of the split bam files """
+def addBamGroups(args, syn):
+    """Adds file entitie for each of the split bam file """
     id =list(syn.chunkedQuery("select id from file where parentId=='%s' and accession_identifier=='%s'" %(TRACKER_ID, args.accession)))
     if len(id)==0:
         raise Exception('The accession id used is invalid')
     else:
         id = id[0]['file.id']
-    for path in args.paths:
-        file = synapseclient.File(path, parent=SPLIT_TRACKER_ID, synapseStore=False)
-        file.host = args.host
-        file.status = 'unassigned'
-        file.derivedAccession = args.accession
-        file.assignee = None
-        syn.store(file, used = [id])
+
+    a = subprocess.Popen("samtools view -H %s | grep '^@RG'" % (args.path), stdout=subprocess.PIPE, shell=True)
+    stdout, stderr = a.communicate()
+
+    for line in stdout.split("\n"):
+        info = line.split("\t")[1:]
+        rg_id = None
+        for b in info:
+            if b.startswith("ID:"):
+                rg_id = b[3:]
+        if rg_id is not None:
+            id =list(syn.chunkedQuery("select id from file where parentId=='%s' and derived_accession=='%s' and readgroup=='%s'" %(SPLIT_TRACKER_ID, args.accession, rg_id)))
+            if len(id) == 0:                    
+                file = synapseclient.File(args.path + "." + rg_id , parent=SPLIT_TRACKER_ID, synapseStore=False)
+                #file.host = args.host
+                file.status = 'unassigned'
+                file.readgroup = rg_id
+                file.readgroup_line = line
+                file.derived_accession = args.accession
+                #file.assignee = None
+                syn.store(file, used = [id])
+            else:
+                raise Exception('Readgroup already stored')
 
 
 def getBamForAlignment(args, syn):
@@ -106,6 +142,31 @@ def getBamForAlignment(args, syn):
         except SynapseHTTPError:
             i+=1
 
+def getAssignmentForWork(args, syn):
+    if args.status not in state_path:
+        sys.stderr.write('Unknown State: %s\n' % (args.status))
+        return
+
+    ids = list(syn.chunkedQuery("select id from file where parentId=='%s' and status=='%s'" % (TRACKER_ID, args.status)))
+    i = 0
+    out = sys.stdout
+    while True:
+        if i==len(ids):
+            sys.stderr.write('No more assignments available\n')
+            return 
+        ent = syn.get(ids[i]['file.id'], downloadFile=False)
+        if ent.status[0] != args.status: 
+            i+=1 
+            continue        
+        ent.status = state_path[args.status]
+        try:
+            syn.store(ent, forceVersion=False)
+            out.write("%s\n" % ent.accession_identifier[0])
+            break
+        except SynapseHTTPError:
+            i+=1
+
+
 def submitAlignedBam(args, syn):
     ent = syn.get(args.id, downloadFile=False)
     ent.status='aligned'
@@ -121,6 +182,33 @@ def resetStatus(args, syn):
         ent.status=args.status
         ent.assignee=args.assignee
         syn.store(ent)
+
+
+def setStatus(args, syn):
+    if args.status not in state_path:
+        sys.stderr.write('Unknown State: %s\n' % (args.status))
+        return
+
+    results =syn.chunkedQuery("select id from file where parentId=='%s' and accession_identifier=='%s'" %(TRACKER_ID, args.accession))
+    for result in results:
+        ent = syn.get(result['file.id'], downloadFile=False)
+        ent.status=args.status
+        syn.store(ent)
+
+
+def getInfo(args, syn):
+    results =syn.chunkedQuery("select * from file where parentId=='%s' and accession_identifier=='%s'" %(TRACKER_ID, args.accession))
+    for result in results:
+        print json.dumps(result, indent=4)
+
+def getAssignments(args, syn):
+    results = syn.chunkedQuery("select * from file where parentId=='%s' and assignee=='%s'" % (TRACKER_ID, args.assignee))
+    for result in results:
+        print "%s\t%s" % (result['file.accession_identifier'][0], result['file.status'][0])
+
+    results = syn.chunkedQuery("select * from file where parentId=='%s' and assignee=='%s'" % (SPLIT_TRACKER_ID, args.assignee))
+    for result in results:
+        print "%s\t%s\t%s" % (result['file.derived_accession'][0], result['file.readgroup'], result['file.status'][0])
 
 
 # --------------------- Util functions ----------------------------
@@ -140,11 +228,16 @@ def build_parser():
                                         description='The following commands are available:',
                                         help='For additional help: "synapseICGCMonitor <COMMAND> -h"')
 
-    parser_get = subparsers.add_parser('getBamForSplit',
+    parser_get = subparsers.add_parser('getBamForWork',
                                        help='Returns a unaligned un-split TCGA bam file UUID as stored on CGHub')
+    parser_get.add_argument("--smallest", help="Get smallest files first", action="store_true", default=False)
+    parser_get.add_argument("--count", help="Number of assignments to get", type=int, default=1)
+    parser_get.add_argument("-o", "--out", help="Output, defualts to stdout", default=None)
+    
+    
     parser_get.add_argument('assignee', metavar='assignee', type=str,
             help='Center processing file for example UCSC or EBI')
-    parser_get.set_defaults(func=getBamForSplit)
+    parser_get.set_defaults(func=getBamForWork)
 
     parser_reset = subparsers.add_parser('resetStatus',
                                        help='Given an UUID accession resets the status')
@@ -153,24 +246,42 @@ def build_parser():
     parser_reset.add_argument('--assignee', metavar='assignee', type=str, default = None,
             help='Center processing file for example UCSC or EBI (defaults to None)')
     parser_reset.add_argument('--status', metavar='status', type=str, default = 'unassigned',
-            help='status of file processing {unassigned, splitting, split, aligning, aligned}\n defaults to unassigned')
+            help='status of file processing {unassigned, downloading, downloaded, splitting, split, aligning, aligned}\n defaults to unassigned')
     parser_reset.set_defaults(func=resetStatus)
 
-    parser_addFile = subparsers.add_parser('addSplitBamFiles',
-                                           help='Adds the split bam files for monitoring and alignment')
+    parser_set = subparsers.add_parser('setStatus',
+                                       help='Given an UUID accession resets the status')
+    parser_set.add_argument('accession', metavar='accession', type=str,
+            help='accession identifier to set the status')
+    parser_set.add_argument('status', metavar='status', type=str, default = 'unassigned',
+            help='status of file processing {unassigned, downloading, downloaded, splitting, split, aligning, aligned}')
+    parser_set.set_defaults(func=setStatus)
+
+
+    parser_addFile = subparsers.add_parser('addBamGroups',
+                                           help='Adds the readgroups for a bam file for monitoring and alignment')
     parser_addFile.add_argument('accession', metavar='accession', type=str,
                                  help='accession identifier from which files were derived')
-    parser_addFile.add_argument('host', metavar='host', type=str,
-                                help='VM host or ip address where files are being stored temporarily.')
-    parser_addFile.add_argument('paths', metavar='paths', type=str,  nargs='*',
-            help='space separated list of paths to split bam files.')
-    parser_addFile.set_defaults(func=addSplitBamFiles)
+    #parser_addFile.add_argument('host', metavar='host', type=str,
+    #                            help='VM host or ip address where files are being stored temporarily.')
+    parser_addFile.add_argument('path', metavar='path', type=str, help='Path of the BAM file')
+    parser_addFile.set_defaults(func=addBamGroups)
 
     parser_getAlign = subparsers.add_parser('getBamForAlignment',
                                        help='Returns a unaligned lane level TCGA bam file location as a triple of accession ip address and file path')
     parser_getAlign.add_argument('assignee', metavar='assignee', type=str,
             help='Computer or process id processing the file')
     parser_getAlign.set_defaults(func=getBamForAlignment)
+
+    parser_getAssignmentWork = subparsers.add_parser('getAssignmentForWork',
+                                       help='')
+    parser_getAssignmentWork.add_argument('assignee', metavar='assignee', type=str,
+            help='Computer or process id processing the file')
+    parser_getAssignmentWork.add_argument('status', metavar='status', type=str,
+            help='')
+
+    parser_getAssignmentWork.set_defaults(func=getAssignmentForWork)
+
 
     parser_setAlign = subparsers.add_parser('submitAlignedBam',
                                        help='Marks alignment as done and stores UUID of CGHub File.')
@@ -180,6 +291,16 @@ def build_parser():
             help='UUID that identifies the aligned bam in CGHub')
     parser_setAlign.set_defaults(func=submitAlignedBam)
 
+
+    parser_info = subparsers.add_parser('getInfo',
+                                       help='Info about accession')
+    parser_info.add_argument('accession', metavar='accession', type=str)
+    parser_info.set_defaults(func=getInfo)
+
+    parser_assignments = subparsers.add_parser('getAssignments',
+                                       help='Info about accession')
+    parser_assignments.add_argument('assignee')
+    parser_assignments.set_defaults(func=getAssignments)
 
     return parser
 
