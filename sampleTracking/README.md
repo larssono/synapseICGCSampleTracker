@@ -46,6 +46,7 @@ Active states are ones that can be completed, or return an error. They include: 
 
 Example BASH control loop
 
+```
 while :
 do
    UUID=`synapseICGCMonitor getAssignmentForWork todownload`
@@ -60,6 +61,7 @@ do
       fi
    fi
 done
+```
 
 3. When BAM is split, entities to store the readgroup meta-data will need to be generated. This is done with the addBamGroups subcommand.  
 
