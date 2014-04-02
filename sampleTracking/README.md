@@ -22,7 +22,9 @@ or follow the instructions on the getting started [help pages](https://www.synap
    ```
    synapse login -u username -p secret --rememberMe
    ```
-
+5. Run `touch ~/.synapseConfig` to get rid of a warning message that the library prints to STDOUT (otherwise 
+it messages "Could not find a config file (/Users/kellrott/.synapseConfig" to STDOUT).  Using defaults."). This bug will 
+be fixed in future releases.
 
 ##Additional commandlines to track status
 
@@ -30,25 +32,42 @@ The processing of the files follows 4 steps:
 
 1. Claim a bam file from CGHub to be split into lane level bam files. This is done with the getBamFileForSplice subcommand
    ```
-   synapseICGCMonitor getBamForSplit ucsc
+   synapseICGCMonitor getBamForWork ucsc
    ```
 where the second parameter is the center that is claiming the file.
 
-2. "Upload" the locations of the split bam files.  This is done with the addSplitBamFiles subcommand.  In order to keep track of the location of the file the ip address of the machine where it is stored as well as the acccession identifier of the parent bam file needs to be specified.
-   ```
-   synapseICGCMonitor addSplitBamFiles b445f98f-05d4-458b-9141-4dee44774660 127.0.0.1 path/to/file1.bam /path/to/file2.bam
-   ```
-3. Lane level bam files can then be checked out for the aligners by calling getBamForAlignment.
-   ```
-   synapseICGCMonitor getBamForAlignment ucsc_computer1
-   ```
-which takes a parameters indicating the assignee of the job such as a processId or node.
+2. For each stage, you can obtain work using the request 'getAssignmentForWork', which will print out UUID for a given state, 
+set the entity into the 'active' state. If no valid work is found, a non-zero exit state will be returned.
 
-4. Adding of the aligned file location.  Once the data has been aligned and re-uploaded to CGHub the status table is updated with the file location with:
+The state chain is:
+unassigned -> todownload -> downloading -> downloaded -> splitting -> split -> aligning -> aligned -> uploading -> uploaded
+
+Active states are ones that can be completed, or return an error. They include: downloading, splitting, aligning, uploading
+
+Example BASH control loop
+
+```
+while :
+do
+   UUID=`synapseICGCMonitor getAssignmentForWork todownload`
+   if [ $? != 0 ]; then 
+      sleep 60
+   else
+      gtdownload $UUID
+      if [ $? != 0]; then
+         synapseICGCMonitor errorAssignment $UUID
+      else
+         synapseICGCMonitor returnAssignment $UUID
+      fi
+   fi
+done
+```
+
+3. When BAM is split, entities to store the readgroup meta-data will need to be generated. This is done with the addBamGroups subcommand.  
+
    ```
-   synapseICGCMonitor submitAlignedBam syn123 1324bxcv-05d4-458b-9141-4dee44774770
+   synapseICGCMonitor addBamGroups b445f98f-05d4-458b-9141-4dee44774660 /path/to/file1.bam
    ```
-which takes the id representing the split bam file and the accession uuid of the newly aligned file in cghub.
 
 In addition it is possible to reset the status of an accession with
 ```
