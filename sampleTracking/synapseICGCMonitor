@@ -169,7 +169,7 @@ def getAssignmentForWork(args, syn):
 
 def returnAssignment(args, syn):
     
-    ids = list(b['file.id'] for b in syn.chunkedQuery("select id from file where parentId=='%s' and accession_identifier=='%s'" % (TRACKER_ID, args.assignee, args.accession)))
+    ids = list(b['file.id'] for b in syn.chunkedQuery("select id from file where parentId=='%s' and accession_identifier=='%s'" % (TRACKER_ID, args.accession)))
     if len(ids) != 1:
         sys.stderr.write('Error finding %s\n' % (args.accession))
         return 1
