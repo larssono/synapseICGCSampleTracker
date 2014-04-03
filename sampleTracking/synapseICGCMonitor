@@ -147,7 +147,7 @@ def getAssignmentForWork(args, syn):
         sys.stderr.write('Unknown State: %s\n' % (args.status))
         return 1
 
-    ids = list(syn.chunkedQuery("select id from file where parentId=='%s' and status=='%s'" % (TRACKER_ID, args.status)))
+    ids = list(syn.chunkedQuery("select id from file where parentId=='%s' and assignee=='%s' and status=='%s'" % (TRACKER_ID, args.assignee, args.status)))
     i = 0
     out = sys.stdout
     while True:
@@ -169,7 +169,7 @@ def getAssignmentForWork(args, syn):
 
 def returnAssignment(args, syn):
     
-    ids = list(b['file.id'] for b in syn.chunkedQuery("select id from file where parentId=='%s' and accession_identifier=='%s'" % (TRACKER_ID, args.accession)))
+    ids = list(b['file.id'] for b in syn.chunkedQuery("select id from file where parentId=='%s' and accession_identifier=='%s'" % (TRACKER_ID, args.assignee, args.accession)))
     if len(ids) != 1:
         sys.stderr.write('Error finding %s\n' % (args.accession))
         return 1
@@ -292,7 +292,7 @@ def build_parser():
             help='Computer or process id processing the file')
     parser_getAssignmentWork.add_argument('status', metavar='status', type=str,
             help='')
-    parser_addFile.set_defaults(func=getAssignmentForWork)
+    parser_getAssignmentWork.set_defaults(func=getAssignmentForWork)
 
     parser_returnAssignment = subparsers.add_parser('returnAssignment', help='')
     parser_returnAssignment.add_argument('accession', metavar='accession', type=str)
