@@ -36,32 +36,33 @@ The processing of the files follows 4 steps:
    ```
 where the second parameter is the center that is claiming the file.
 
-2. For each stage, you can obtain work using the request 'getAssignmentForWork', which will print out UUID for a given state, 
-set the entity into the 'active' state. If no valid work is found, a non-zero exit state will be returned.
+2. For each stage, you can obtain work using the request 'getAssignmentForWork', which will: 1) print out the UUID for bam file of a given state
+   2)Update the state in the tracking system to the next active state according to the state chain:
 
-The state chain is:
-unassigned -> todownload -> downloading -> downloaded -> splitting -> split -> aligning -> aligned -> uploading -> uploaded
+   The state chain is:
+   unassigned -> todownload -> downloading -> downloaded -> splitting -> split -> aligning -> aligned -> uploading -> uploaded
 
-Active states are ones that can be completed, or return an error. They include: downloading, splitting, aligning, uploading
+   If no valid work remains to be done, a non-zero exit status will be returned.
+   Active states are ones that can be completed, or return an error. They include: downloading, splitting, aligning, uploading
 
-Example BASH control loop
+   Example BASH control loop
 
-```
-while :
-do
-   UUID=`synapseICGCMonitor getAssignmentForWork todownload`
-   if [ $? != 0 ]; then 
-      sleep 60
-   else
-      gtdownload $UUID
-      if [ $? != 0]; then
-         synapseICGCMonitor errorAssignment $UUID
+   ```
+   while :
+   do
+      UUID=`synapseICGCMonitor getAssignmentForWork ucsc todownload`
+      if [ $? != 0 ]; then 
+         sleep 60
       else
-         synapseICGCMonitor returnAssignment $UUID
+         gtdownload $UUID
+         if [ $? != 0]; then
+            synapseICGCMonitor errorAssignment $UUID "Error happened during gtdownload"
+         else
+            synapseICGCMonitor returnAssignment $UUID
+         fi
       fi
-   fi
-done
-```
+    done
+    ```
 
 3. When BAM is split, entities to store the readgroup meta-data will need to be generated. This is done with the addBamGroups subcommand.  
 

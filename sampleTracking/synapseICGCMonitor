@@ -41,15 +41,10 @@ def getBamForWork(args, syn):
     fileSize and tries to change status of to splitting of largest.  If successfull it returns the highest 
     """
     ids = getOrderedListOfUnassigned(syn)
-    if args.smallest:
-        ids.reverse()
     sys.stderr.write('%i Unprocessed TCGA Samples\n' %len(ids))
     i = 0 
     j = 0
-    if args.out is None:
-        out = sys.stdout
-    else:
-        out = open(args.out, "w")
+    out = sys.stdout if args.out is None else open(args.out, "w")
     while True:
         if j >= args.count:
             return 0
@@ -61,7 +56,7 @@ def getBamForWork(args, syn):
             i+=1 
             continue
         ent.assignee = args.assignee
-        ent.status = state_path['unassigned']
+        ent.status = state_path['unassigned']  #Sets state to todownload
         try:
             syn.store(ent)
             out.write("%s\n" % ent.accession_identifier[0])
@@ -88,15 +83,30 @@ def getOrderedListOfUnassigned(syn):
     fileSizes=list()
     accessions=list()
     ids = list()
+    donor_ids = list()
     for result in results:
         if result['file.donor_identifier'][0] in donors:
             fileSizes.append(result['file.fileSize'][0] if result['file.fileSize'] is not None else None)
             accessions.append(result['file.accession_identifier'][0])
             ids.append(result['file.id'])
+            donor_ids.append(result['file.donor_identifier'][0])
 
+    #If there are unassigned partner samples put those in the beginning
+    counts = collections.Counter(donor_ids) 
+    counts = [counts[id] for id in donor_ids]  #Number of unassigned donor ids in list
+    
     #Sort by fileSize
     idx = argsort(fileSizes)    
     ids = [ids[i] for i in idx[::-1]]
+    counts = [counts[i] for i in idx[::-1]]
+    fileSizes = [fileSizes[i] for i in idx[::-1]]
+
+    #Resort by counts
+    idx = argsort(counts)    
+    ids = [ids[i] for i in idx]
+    counts = [counts[i] for i in idx]
+    fileSizes = [fileSizes[i] for i in idx]
+
     return ids
     
 def addBamGroups(args, syn):
@@ -242,9 +252,8 @@ def build_parser():
 
     parser_get = subparsers.add_parser('getBamForWork',
                                        help='Returns a unaligned un-split TCGA bam file UUID as stored on CGHub')
-    parser_get.add_argument("--smallest", help="Get smallest files first", action="store_true", default=False)
     parser_get.add_argument("--count", help="Number of assignments to get", type=int, default=1)
-    parser_get.add_argument("-o", "--out", help="Output, defualts to stdout", default=None)
+    parser_get.add_argument("-o", "--out", help="Output, defaults to stdout", default=None)
     
     
     parser_get.add_argument('assignee', metavar='assignee', type=str,
