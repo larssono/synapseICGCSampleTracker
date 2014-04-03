@@ -196,7 +196,7 @@ def errorAssignment(args, syn):
         sys.stderr.write('Returning inactive work %s (%s)\n' % (args.accession, ent.status[0]))
         return 1     
 
-    ent.status='error'
+    ent.status[0] = "error:%s" % (ent.status[0])
     ent.error_message=args.message
     syn.store(ent)
     return 0
@@ -210,7 +210,10 @@ def resetStatus(args, syn):
     for result in results:
         ent = syn.get(result['file.id'], downloadFile=False)
         ent.status=args.status
-        ent.assignee=args.assignee
+        if args.assignee is not None:
+            ent.assignee=args.assignee
+        if args.delete_assignee:
+            ent.assignee = None
         syn.store(ent)
     return 0
 
@@ -218,7 +221,10 @@ def resetStatus(args, syn):
 def getInfo(args, syn):
     results =syn.chunkedQuery("select * from file where parentId=='%s' and accession_identifier=='%s'" %(TRACKER_ID, args.accession))
     for result in results:
-        print json.dumps(result, indent=4)
+        if args.full:
+            print json.dumps(result, indent=4)
+        else:
+            print result['file.status'][0]
     return 0
 
 def getAssignments(args, syn):
@@ -265,7 +271,10 @@ def build_parser():
     parser_reset.add_argument('accession', metavar='accession', type=str,
             help='accession identifier to reset the status')
     parser_reset.add_argument('--assignee', metavar='assignee', type=str, default = None,
-            help='Center processing file for example UCSC or EBI (defaults to None)')
+            help='Center processing file for example UCSC or EBI (defaults to original value)')
+    parser_reset.add_argument('--delete-assignee', default = False, action="store_true",
+            help='Center processing file for example UCSC or EBI (defaults to original value)')
+    
     parser_reset.add_argument('--status', metavar='status', type=str, default = 'unassigned',
             help='status of file processing {unassigned, downloading, downloaded, splitting, split, aligning, aligned}\n defaults to unassigned')
     parser_reset.set_defaults(func=resetStatus)
@@ -297,6 +306,8 @@ def build_parser():
     parser_info = subparsers.add_parser('getInfo',
                                        help='Info about accession')
     parser_info.add_argument('accession', metavar='accession', type=str)
+    parser_info.add_argument('--full', action="store_true", default=False)
+    
     parser_info.set_defaults(func=getInfo)
 
     parser_assignments = subparsers.add_parser('getAssignments',
