@@ -310,7 +310,7 @@ def build_parser():
 
 if __name__ == "__main__":
     args = build_parser().parse_args()
-    syn = synapseclient.Synapse(debug=args.debug)
+    syn = synapseclient.Synapse(debug=args.debug, skip_checks=True)
     syn.login(silent=True)
     if 'func' in args:
         sys.exit(args.func(args, syn))
