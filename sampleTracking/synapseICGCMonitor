@@ -71,7 +71,7 @@ def getOrderedListOfUnassigned(syn):
     """Performs a query and filters out donors with more than two files
     and return a list of ids inversly sorted by fileSize.
     """
-    QUERY= "select accession_identifier, donor_identifier, fileSize from file where parentId=='%s' and location=='CGHub' and status=='unassigned'" %TRACKER_ID
+    QUERY= "select accession_identifier, donor_identifier, fileSize, notIllumina from file where parentId=='%s' and location=='CGHub' and status=='unassigned'" %TRACKER_ID
     results = list(syn.chunkedQuery(QUERY))
 
     #Determine the donor ids of the samples with two files
@@ -79,13 +79,13 @@ def getOrderedListOfUnassigned(syn):
     donorCounts = collections.Counter([result['file.donor_identifier'][0] for result in donors])
     donors = [donor for donor, count in donorCounts.iteritems() if count==2]
 
-    #Go through query result and remove rows not in donor list
+    #Go through query result and remove rows not in donor list and notillumina==True
     fileSizes=list()
     accessions=list()
     ids = list()
     donor_ids = list()
     for result in results:
-        if result['file.donor_identifier'][0] in donors:
+        if result['file.donor_identifier'][0] in donors and result['file.notIllumina'] is None:
             fileSizes.append(result['file.fileSize'][0] if result['file.fileSize'] is not None else None)
             accessions.append(result['file.accession_identifier'][0])
             ids.append(result['file.id'])
