@@ -219,10 +219,18 @@ def resetStatus(args, syn):
 
 
 def getInfo(args, syn):
-    results =syn.chunkedQuery("select * from file where parentId=='%s' and accession_identifier=='%s'" %(TRACKER_ID, args.accession))
+    results = syn.chunkedQuery("select * from file where parentId=='%s' and accession_identifier=='%s'" %(TRACKER_ID, args.accession))
     for result in results:
         if args.full:
             print json.dumps(result, indent=4)
+        elif args.type:
+            print result['file.sample_type_name'][0]
+        elif args.get_normal:
+            donor_identifier = result['file.donor_identifier'][0]
+            res2 = syn.chunkedQuery("select * from file where parentId=='%s' and donor_identifier=='%s'" %(TRACKER_ID, donor_identifier))
+            for a in res2:
+                if a['file.sample_type_name'][0] in ["Blood Derived Normal", "Solid Tissue Normal"]:
+                    print a['file.accession_identifier'][0]
         else:
             print result['file.status'][0]
     return 0
@@ -307,6 +315,9 @@ def build_parser():
                                        help='Info about accession')
     parser_info.add_argument('accession', metavar='accession', type=str)
     parser_info.add_argument('--full', action="store_true", default=False)
+    parser_info.add_argument('--type', action="store_true", default=False)
+    parser_info.add_argument('--get-normal', action="store_true", default=False)
+    
     
     parser_info.set_defaults(func=getInfo)
 
