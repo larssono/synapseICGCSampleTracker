@@ -58,7 +58,7 @@ def getBamForWork(args, syn):
         ent.assignee = args.assignee
         ent.status = state_path['unassigned']  #Sets state to todownload
         try:
-            syn.store(ent)
+            syn.store(ent, forceVersion=False)
             out.write("%s\n" % ent.accession_identifier[0])
             j+=1
         except SynapseHTTPError:
@@ -180,7 +180,7 @@ def returnAssignment(args, syn):
         return 1     
 
     ent.status=state_path[ent.status[0]]
-    syn.store(ent)
+    syn.store(ent, forceVersion=False)
     return 0
 
 
@@ -198,7 +198,7 @@ def errorAssignment(args, syn):
 
     ent.status[0] = "error:%s" % (ent.status[0])
     ent.error_message=args.message
-    syn.store(ent)
+    syn.store(ent, forceVersion=False)
     return 0
 
 
@@ -214,7 +214,7 @@ def resetStatus(args, syn):
             ent.assignee=args.assignee
         if args.delete_assignee:
             ent.assignee = None
-        syn.store(ent)
+        syn.store(ent, forceVersion=False)
     return 0
 
 
