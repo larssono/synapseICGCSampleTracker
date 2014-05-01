@@ -156,25 +156,23 @@ def getOrderedListOfBams(syn, query):
     combinedFileSizes=[0,]*len(fileSizes)
     i=0
     while i<len(idx):
-        size1 = fileSizes[idx[i]] if fileSizes[idx[i]] is not None else 0
         #The next donor is the same 
         if donor_ids[idx[i]] == donor_ids[idx[i+1]]:
-            size2 = fileSizes[idx[i+1]] if fileSizes[idx[i+1]] is not None else 0
-            combinedFileSizes[idx[i]] = combinedFileSizes[idx[i+1]]= size1+size2
+            combinedFileSizes[idx[i]] = combinedFileSizes[idx[i+1]]= fileSizes[idx[i]]+fileSizes[idx[i+1]]
             i+=2
         else: #Only a single donor found
-            combinedFileSizes[idx[i]] = size1
+            combinedFileSizes[idx[i]] = fileSizes[idx[i]]
             i+=1
 
     #This stuff would be trivial with numpy!
     #Sort by fileSize
     idx = argsort(combinedFileSizes)    
-    ids = [ids[i] for i in idx[::-1]]
-    counts = [counts[i] for i in idx[::-1]]
-    fileSizes = [fileSizes[i] for i in idx[::-1]]
-    combinedFileSizes = [combinedFileSizes[i] for i in idx[::-1]]
-    accessions = [accessions[i] for i in idx[::-1]]
-    donor_ids = [donor_ids[i] for i in idx[::-1]]
+    ids = [ids[i] for i in idx]
+    counts = [counts[i] for i in idx]
+    fileSizes = [fileSizes[i] for i in idx]
+    combinedFileSizes = [combinedFileSizes[i] for i in idx]
+    accessions = [accessions[i] for i in idx]
+    donor_ids = [donor_ids[i] for i in idx]
 
     #Resort by counts
     idx = argsort(counts)    
