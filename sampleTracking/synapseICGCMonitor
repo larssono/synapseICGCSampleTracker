@@ -59,8 +59,28 @@ def getAssignmentForWork(args, syn):
         sys.stderr.write('Unknown State: %s\n' % (args.status))
         return 1
 
-    res = list(syn.chunkedQuery("select id, fileSize from file where parentId=='%s' and assignee=='%s' and status=='%s'" % (TRACKER_ID, args.assignee, args.status)))
-    ids = list(a['file.id'] for a in sorted(res, key=lambda x:x['file.fileSize']))
+    #Determine which donors are already uploaded and prioritize these
+    uploadedDonors = {l['file.donor_identifier'][0] for l in 
+                      syn.chunkedQuery("select donor_identifier from file where parentId=='%s' and assignee=='%s' and status=='%s'" 
+                                       % (TRACKER_ID, args.assignee, 'uploaded'))}
+    print uploadedDonors, len(uploadedDonors)
+
+    #Extract information to sort by
+    results = list(syn.chunkedQuery("select id, donor_identifier, fileSize from file where parentId=='%s' and assignee=='%s' and status=='%s'" % (TRACKER_ID, args.assignee, args.status)))
+    ids = [r['file.id'] for r in results]
+    donor_ids = [r['file.donor_identifier'][0] for r in results]
+    file_sizes = [r['file.fileSize'][0] for r in results]
+
+    #Resort by weather the pair has been uploaded
+    notInUploaded = [d not in uploadedDonors for d in donor_ids]
+    idx = argsort(notInUploaded)
+    ids = [ids[i] for i in idx]
+    donor_ids = [donor_ids[i] for i in idx]
+    file_sizes = [file_sizes[i] for i in idx]
+
+    if args.debug:
+        for i in zip(ids, donor_ids, file_sizes):
+            print '\t'.join(map(str,i)), i[1] in uploadedDonors
 
     #prep variables for common output routine
     args.count=1
@@ -118,7 +138,6 @@ def getOrderedListOfBams(syn, query):
     fileSizes=list()
     accessions=list()
     ids = list()
-    assignee = list()
     donor_ids = list()
     for result in results:
         if result['file.donor_identifier'][0] in donors and result['file.notIllumina'] is None:
@@ -126,7 +145,6 @@ def getOrderedListOfBams(syn, query):
             accessions.append(result['file.accession_identifier'][0])
             ids.append(result['file.id'])
             donor_ids.append(result['file.donor_identifier'][0])
-            assignee.append(result['file.assignee'][0])
 
 
     #Used to put unassigned partner samples in the beginning 
@@ -157,7 +175,6 @@ def getOrderedListOfBams(syn, query):
     combinedFileSizes = [combinedFileSizes[i] for i in idx[::-1]]
     accessions = [accessions[i] for i in idx[::-1]]
     donor_ids = [donor_ids[i] for i in idx[::-1]]
-    assignee = [assignee[i] for i in idx[::-1]]
 
     #Resort by counts
     idx = argsort(counts)    
@@ -167,12 +184,11 @@ def getOrderedListOfBams(syn, query):
     combinedFileSizes = [combinedFileSizes[i] for i in idx]
     accessions = [accessions[i] for i in idx]
     donor_ids = [donor_ids[i] for i in idx]
-    assignee = [assignee[i] for i in idx]
     
     ##### DEBUG - TODO - REMOVE
     if args.debug:
         for i in range(len(fileSizes)):
-            print '\t'.join(map(str, [donor_ids[i], counts[i], combinedFileSizes[i], fileSizes[i], ids[i], assignee[i]]))
+            print '\t'.join(map(str, [donor_ids[i], counts[i], combinedFileSizes[i], fileSizes[i], ids[i]]))
     #############################
 
     return ids
