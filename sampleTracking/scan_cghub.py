@@ -36,7 +36,7 @@ def dom_scan_iter(node, stack, prefix):
 #build the cghub info tables
 
 #req = requests.get("https://cghub.ucsc.edu/cghub/metadata/analysisDetail?study=*")
-dom = parseString(req.text)
+#dom = parseString(req.text)
 
 name_map = {}
 md5_map = {}
@@ -62,16 +62,21 @@ for node, prefix, attr, text in (dom_scan(dom.childNodes[0], "ResultSet/Result")
     name_map[analysis_id] = filename
     md5_map[analysis_id] = file_md5
     size_map[analysis_id] = int(filesize)
-    barcode_map[analysis_id] = barcode
+    #barcode_map[analysis_id] = barcode
 
     #participant_id
 
 #########################
 #Add file annotation for 
 #########################
-# for val in  syn.chunkedQuery("select accession_identifier from file where parentId=='syn2364746' and location=='CGHub'"):
-#     id = val['file.id']
-#     accession = val['file.accession_identifier'][0]
-#     print syn.setAnnotations(id, syn.getAnnotations(id), 
-#                              fileSize=size_map[accession], 
-#                              fileMD5=md5_map[accession])
+import synapseclient
+syn=synapseclient.login() 
+
+for val in  syn.chunkedQuery("select accession_identifier, fileSize from file where parentId=='syn2364746' and location=='CGHub'"):
+    id = val['file.id']
+    accession = val['file.accession_identifier'][0]
+    if val['file.fileSize'] is None:
+        print id, size_map[accession], md5_map[accession]
+        print syn.setAnnotations(id, syn.getAnnotations(id), 
+                                 fileSize=size_map[accession], 
+                                 fileMD5=md5_map[accession])
