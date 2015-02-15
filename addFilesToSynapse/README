@@ -1,5 +1,6 @@
 lftp -u PetersM -p22 sftp://tcgaftps.nci.nih.gov -e 'find /tcgapancan/pancan/; bye'>jamboree_files.txt 
-grep -v "/$" jamboree_file_listing.txt>jamboree_only_files.txt 
-grep /pancan/synapse jamboree_only_files.txt >jamboree_non_synapse.txt
+grep -v "/$" jamboree_files.txt>jamboree_only_files.txt 
 grep -v  /pancan/synapse jamboree_only_files.txt >jamboree_non_synapse.txt
 syn query "select id from file where parentId==syn3155834"|tail -n +2 |xargs -n1 -I{} synapse show {}|grep sftp>already_saved_in_synapse.txt
+
+grep variant_calling_pilot_64 jamboree_non_synapse.txt>'jamboree_pilot_64.txt'

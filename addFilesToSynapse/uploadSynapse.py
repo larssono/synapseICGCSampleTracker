@@ -1,8 +1,10 @@
 import synapseclient 
 from synapseclient import File
+import synapseHelpers
 import pandas as pd
-import os, urllib
+import os, urllib, urlparse
 import multiprocessing.dummy as mp
+from collections import Counter
 
 import synapseHelpers
 BASE = '/tcgapancan/pancan/variant_calling_pilot_64/'
@@ -17,16 +19,26 @@ DIRS = {'broad': 'syn3165121',
         'mcgill_popsv': 'syn3165151',
         'oicr_sga': 'syn3167076',
         'sfu': 'syn3165152', 
-        'LOHComplete': 'syn3168451'}
+        'LOHcomplete': 'syn3168451',
+        'Synteka_pgm21': 'syn3206414',
+        'oicr_bl': 'syn3206415', 
+        'crg_clindel': 'syn3206417'}
 
 syn = synapseclient.Synapse(skip_checks=True)
 syn.login(silent=True)
+
+def url2path(str):
+    return urllib.unquote(urlparse.urlparse(str).path)
 
 
 def findFilesAlreadyInSynapse():
     """Determine the files already stored in Synapse"""
     allFiles= synapseHelpers.query2df(syn.chunkedQuery("select * from file where benefactorId=='syn2351328'"), False)
-    entities = p.map(lambda id: syn.get(id, downloadFile=False), allFiles.id)
+    print 'Found', len(allFiles), 'files in Synapse.  Fetching urls...'
+    def get(id):
+        print id
+        return syn.get(id, downloadFile=False)
+    entities = p.map(get,  allFiles.id)
     return entities
 
 
@@ -47,16 +59,30 @@ def findMissingSangerFiles(entities, files):
     df.ix[df.synapse_path.isnull() | df.jamboree_path.isnull(), :].to_csv('missing_files.csv')
 
 
+def findFilesNotInJamboreeButInSynapse(entities):
+    """
+    """
+    savedURLs = [e.externalURL for e in entities if 
+                 e.externalURL is not None and 
+                 e.externalURL.startswith('sftp://tcgaftps.nci.nih.gov')]
+    urls = set([url2path(y) for y in savedURLs ])
+    
+    with open('jamboree_only_files.txt') as fp:
+        files = fp.readlines()
+        files = [f.strip() for f in files]
+    files = set(files)
+    print list(files)[0]
+    print list(urls)[0]
+    print len(urls), len(files), len(urls - files)
+    return urls-files
+
 def uploadToSynapse(f):
     """Given a filepath extracts metadata and uploads to Synapse"""
     center, sample_id, workflow_name, date, call_type, dataType, fileType = ['']*7
     url = URLBASE+f
-    if len(f.split('/')) >6:
-        #TODO add 
-        #  center = OICR_BL/sv and OICR_BL/snv as center
-        #  center = LOHcomplete
-        return
-    center= f.split('/')[4]
+    if   'OICR_BL' in f: center = 'oicr_bl'
+    elif 'CRG/clindel/somatic' in f:  center = 'crg_clindel'
+    else: center = f.split('/')[4]
     filename =  f.split('/')[-1]
     if center in ('yale', 'wustl', 'LOHcomplete'):
         if filename =='bd829214-f230-4331-b234-def10bbe7938CNV.vcf.gz':
@@ -64,15 +90,13 @@ def uploadToSynapse(f):
         else:
             sample_id, dataType = filename.lower().split('.')[:2]
             fileType =  [i for i in filename.split('.')[2:] if i != 'gz'][-1]
-    elif center in ('broad', 'BSC', 'oicr_sga', 'mda_kchen', 'MDA_HGSC', 'mcgill_popsv', 'sfu'):
-        sample_id, workflow_name, date, call_type, dataType  =  filename.split('.')[:5]
+    elif center in ('broad', 'BSC', 'oicr_sga', 'mda_kchen', 'MDA_HGSC', 'mcgill_popsv', 'sfu', 'UCSC', 'oicr_bl', 'Synteka_pgm21', 'crg_clindel'):
+        sample_id, workflow_name, date, call_type, dataType  =  filename.replace('indels', 'indel', split('.')[:5])
         fileType =  [i for i in filename.split('.')[5:] if i != 'gz'][-1]
     else:
-        print f
+        print 'Not uploading:', f
         return 
-    #TODO uncomment frome here on.
     print center, workflow_name, date, call_type, dataType, fileType
-
     file = File(url, parentId=DIRS[center], synapseStore=False)
     file.center = center.lower()
     file.sample_id = sample_id
@@ -83,8 +107,8 @@ def uploadToSynapse(f):
     file.disease = 'Cancer'
     file.dataSubType = dataType
     file.fileType = fileType
+    #file.analysis_id_tumor = ?????
     syn.store(file, forceVersion=False)
-
 
 
 if __name__ == '__main__':
@@ -96,43 +120,28 @@ if __name__ == '__main__':
 
     #Files already uploaded to Synapse
     entities = findFilesAlreadyInSynapse()
-    savedURLs = [e.externalURL for e in entities if e.externalURL is not None]# if e.parentId in ('syn3155834', 'syn3049523', 'syn2898426', 'syn3153526', 'syn3107237', 'syn3104289', 'syn3060776', 'syn3049525', 'syn3153529')]
+    savedURLs = [e.externalURL for e in entities if e.externalURL is not None]
     #findMissingSangerFiles(entities, files) #Used to inform OICR 
-
+    #missing =  findFilesNotInJamboreeButInSynapse(entities)
+    #print Counter([f[:40] for f in missing]).most_common()
+    
     ###REMOVE files already uploaded or for other reasons
-    #Remove all already uploaded
-    urls = set([urllib.unquote(y[27:]) for y in savedURLs ])
-    files = [y for y in files if y not  in urls]
-    #Remove md5 sum files
-    files = [y for y in files if not y.endswith('md5\n')]
-    #Remove already uploaded DKFZ files
-    files = [y for y in files if 'dkfz' not in y]
-    #Remove already uploaded embl files 
-    files = [y for y in files if 'embl' not in y] #skips somatic_lowconf.sv.vcf
-    #Remove already uploaded Sanger files 
-    sangerSaved = set([y.split('/')[-1] for y in savedURLs if 'Sanger' in y])
-    files = [y for y in files if (y.split('/')[-1] not in sangerSaved and 'OICR_Sanger_Core' in y) or 'OICR_Sanger_Core' not in y]
+    urls = set([url2path(y) for y in savedURLs ])
+    files = [y for y in files if y not in urls]
+    files = [y for y in files if not y.endswith('md5\n')]     #Remove md5 sum files
+    files = [f for f in files if 'dkfz' not in f] #Remove DKFZ uploaded twice
+    files = [f for f in files if 'OICR_Sanger_Core' not in f] #Remove Sanger 
+    files = [f for f in files if 'OICR_staging' not in f] #Remove Staging
+    files = [f for f in files if 'embl' not in f]  #Remove embl files (md5 and lowconf)
 
+    #Not permanent filters
+    files = [f for f in files if 'germline' not in f]  #Remove germline samples
+    files = [f for f in files if '1000Genome' not in f and '1KG' not in f] #Remove 1000Genomes
+    files = [f for f in files if 'HALLYM/GATK/tumor' not in f] #Remove
     #Upload the remaining files to Synapse
     p.map(uploadToSynapse, files)
 
     #Counter([os.path.dirname(f.replace(BASE, '')) for f in files]).most_common()
-    # [('OICR_Sanger_Core', 913),
-    #  ('HALLYM/GATK/germline', 252),
-    #  ('HALLYM/GATK/tumor', 224),
-    #  ('CRG/pesvfisher/germline', 150),
-    #  ('LOHcomplete', 136),
-    #  ('OICR_BL/snv', 126),
-    #  ('Synteka_pgm21', 126),
-    #  ('CRG/clindel/somatic', 126),
-    #  ('CRG/clindel/germline', 118),
-    #  ('OICR_BL/sv', 98),
-    #  ('HALLYM/GATK/1000Genome_original', 24),
-    #  ('HALLYM/GATK/1000Genome_platinum', 24),
-    #  ('yale/1KG', 12)]
-    #yale = [f for f in files if 'sfu' in f] 
 
-#4326
-#2437
-#1528
-#2329
+
+
